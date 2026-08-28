@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "owner": "Lars Schouw",
+  "reviewed_on": "2026-08-28",
+  "license": "MIT",
+  "artifact": {
+    "id": "E-CODE-003",
+    "title": "Durable agent workflow safety core",
+    "source_path": ".",
+    "publication_status": "public",
+    "public_url": "https://github.com/damian123/durable-agent-workflow-safety",
+    "verification_command": "npm ci && npm run verify",
+    "expected_test_count": 12,
+    "claims_supported": [
+      "runtime-validated capabilities",
+      "approval bound to an immutable input fingerprint",
+      "separation of request and approval",
+      "unknown execution outcomes",
+      "restart-safe reconciliation"
+    ],
+    "evidence_files": [
+      "README.md",
+      "WALKTHROUGH.md",
+      "docs/",
+      "src/",
+      "test/"
+    ],
+    "claim_boundary": "Synthetic deployment and incident data; not a production agent framework or representation of an employer system."
+  }
+}
