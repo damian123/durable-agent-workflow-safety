@@ -35,17 +35,26 @@ export type RollbackMode =
   | "UNKNOWN_APPLIED"
   | "UNKNOWN_ABSENT";
 
-function deploymentKey(project: string, deploymentId: string): string {
-  return `${project}/${deploymentId}`;
+interface RollbackAttemptEvidence {
+  readonly input: RollbackDeploymentInput;
+  readonly attempt: number;
+  readonly disposition: "APPLIED" | "ABSENT";
 }
 
 export class ScriptedDeploymentGateway {
-  private readonly revisions = new Map<string, string>();
+  private readonly revisions = new Map<string, Map<string, string>>();
   private readonly modes = new Map<string, RollbackMode>();
   private readonly executions = new Map<string, number>();
+  private readonly actionBindings = new Map<string, RollbackDeploymentInput>();
+  private readonly attempts = new Map<string, Map<number, RollbackAttemptEvidence>>();
 
   seed(project: string, deploymentId: string, revision: string): void {
-    this.revisions.set(deploymentKey(project, deploymentId), revision);
+    let deployments = this.revisions.get(project);
+    if (deployments === undefined) {
+      deployments = new Map<string, string>();
+      this.revisions.set(project, deployments);
+    }
+    deployments.set(deploymentId, revision);
   }
 
   setMode(actionId: string, mode: RollbackMode): void {
@@ -57,7 +66,7 @@ export class ScriptedDeploymentGateway {
   }
 
   currentRevision(project: string, deploymentId: string): string | undefined {
-    return this.revisions.get(deploymentKey(project, deploymentId));
+    return this.revisions.get(project)?.get(deploymentId);
   }
 
   async inspect(input: InspectDeploymentInput): Promise<CapabilityOutcome> {
@@ -75,9 +84,11 @@ export class ScriptedDeploymentGateway {
     input: RollbackDeploymentInput,
     context: ExecutionContext,
   ): Promise<CapabilityOutcome> {
+    this.bindAction(context.actionId, input);
     this.executions.set(context.actionId, this.executionCount(context.actionId) + 1);
     const current = this.currentRevision(input.project, input.deploymentId);
     if (current === input.toRevision) {
+      this.recordAttempt(input, context, "APPLIED");
       return {
         kind: "SUCCEEDED",
         output: { ...input, revision: current, idempotentReplay: true },
@@ -95,6 +106,7 @@ export class ScriptedDeploymentGateway {
       return { kind: "REJECTED", reason: "deployment control plane rejected rollback" };
     }
     if (mode === "UNKNOWN_ABSENT") {
+      this.recordAttempt(input, context, "ABSENT");
       return {
         kind: "OUTCOME_UNKNOWN",
         reason: "connection closed before the control plane acknowledged the command",
@@ -102,6 +114,7 @@ export class ScriptedDeploymentGateway {
     }
 
     this.seed(input.project, input.deploymentId, input.toRevision);
+    this.recordAttempt(input, context, "APPLIED");
     if (mode === "UNKNOWN_APPLIED") {
       return {
         kind: "OUTCOME_UNKNOWN",
@@ -114,24 +127,94 @@ export class ScriptedDeploymentGateway {
     };
   }
 
-  async reconcile(input: RollbackDeploymentInput): Promise<ReconciliationOutcome> {
+  async reconcile(
+    input: RollbackDeploymentInput,
+    context: ExecutionContext,
+  ): Promise<ReconciliationOutcome> {
+    const binding = this.actionBindings.get(context.actionId);
+    if (binding === undefined || !this.sameRollback(binding, input)) {
+      return {
+        kind: "UNRESOLVED",
+        evidence: `no immutable command binding for action ${context.actionId}`,
+      };
+    }
+    const attempt = this.attempts.get(context.actionId)?.get(context.attempt);
+    if (attempt === undefined || !this.sameRollback(attempt.input, input)) {
+      return {
+        kind: "UNRESOLVED",
+        evidence: `no action-correlated evidence for attempt ${context.attempt}`,
+      };
+    }
     const current = this.currentRevision(input.project, input.deploymentId);
-    if (current === input.toRevision) {
+    if (attempt.disposition === "APPLIED") {
       return {
         kind: "CONFIRMED",
-        output: { ...input, revision: current, reconciled: true },
+        output: {
+          ...input,
+          revision: input.toRevision,
+          observedRevision: current,
+          reconciled: true,
+          executionAttempt: context.attempt,
+        },
       };
     }
     if (current === input.fromRevision) {
       return {
         kind: "ABSENT",
-        evidence: `deployment remains on ${input.fromRevision}`,
+        evidence: `action ${context.actionId} attempt ${context.attempt} is recorded absent and deployment remains on ${input.fromRevision}`,
       };
     }
     return {
       kind: "UNRESOLVED",
-      evidence: `deployment is on unexpected revision ${current ?? "missing"}`,
+      evidence: `action attempt is absent, but deployment is on unexpected revision ${current ?? "missing"}`,
     };
+  }
+
+  private bindAction(actionId: string, input: RollbackDeploymentInput): void {
+    const existing = this.actionBindings.get(actionId);
+    if (existing !== undefined && !this.sameRollback(existing, input)) {
+      throw new Error(`action ${actionId} is already bound to a different rollback command`);
+    }
+    if (existing === undefined) this.actionBindings.set(actionId, { ...input });
+  }
+
+  private recordAttempt(
+    input: RollbackDeploymentInput,
+    context: ExecutionContext,
+    disposition: RollbackAttemptEvidence["disposition"],
+  ): void {
+    let actionAttempts = this.attempts.get(context.actionId);
+    if (actionAttempts === undefined) {
+      actionAttempts = new Map<number, RollbackAttemptEvidence>();
+      this.attempts.set(context.actionId, actionAttempts);
+    }
+    const existing = actionAttempts.get(context.attempt);
+    if (
+      existing !== undefined &&
+      (!this.sameRollback(existing.input, input) || existing.disposition !== disposition)
+    ) {
+      throw new Error(`action ${context.actionId} attempt ${context.attempt} has conflicting evidence`);
+    }
+    if (existing === undefined) {
+      actionAttempts.set(context.attempt, {
+        input: { ...input },
+        attempt: context.attempt,
+        disposition,
+      });
+    }
+  }
+
+  private sameRollback(
+    left: RollbackDeploymentInput,
+    right: RollbackDeploymentInput,
+  ): boolean {
+    return (
+      left.project === right.project &&
+      left.deploymentId === right.deploymentId &&
+      left.fromRevision === right.fromRevision &&
+      left.toRevision === right.toRevision &&
+      left.reason === right.reason
+    );
   }
 }
 
@@ -154,7 +237,8 @@ export function deploymentCapabilities(
       risk: "WRITE_REVERSIBLE",
       validate: (input) => rollbackInputSchema.parse(input),
       execute: (input, context) => gateway.rollback(rollbackInputSchema.parse(input), context),
-      reconcile: (input) => gateway.reconcile(rollbackInputSchema.parse(input)),
+      reconcile: (input, context) =>
+        gateway.reconcile(rollbackInputSchema.parse(input), context),
     },
   ];
 }

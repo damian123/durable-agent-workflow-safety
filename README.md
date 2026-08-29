@@ -13,12 +13,12 @@ An incident agent inspects a production deployment and proposes a rollback. Read
 - Register versioned capabilities with runtime-validated inputs and declared risk.
 - Keep approval policy in deterministic code rather than model instructions.
 - Permit read capabilities without approval while gating write capabilities.
-- Bind time-limited approval to an immutable SHA-256 input fingerprint.
-- Prevent requester self-approval in the demonstration policy.
+- Bind a finite, time-limited approval to an immutable SHA-256 fingerprint of plain JSON input.
+- Normalize requester and approver identities before preventing self-approval.
 - Persist action state before an external effect begins.
 - Deduplicate identical action requests and reject changed payload reuse.
 - Represent a lost acknowledgement as `OUTCOME_UNKNOWN`, not failure.
-- Block blind retry until reconciliation confirms the effect or proves it absent.
+- Block blind retry until action-and-attempt-correlated history confirms the effect or, together with authoritative current state, proves it absent.
 - Restore an uncertain workflow from a durable snapshot without repeating the effect.
 - Preserve an ordered, user-visible progress history.
 
@@ -55,24 +55,29 @@ TypeScript, Node.js, Zod, Vitest, strict compiler options, deterministic clocks,
 1. Strict schemas reject an input that attempts to add `skipApproval`.
 2. Read-only inspection executes without approval.
 3. A write is blocked before approval, and the requester cannot self-approve.
-4. Approval with a different payload fingerprint is rejected.
-5. An identical action request is deduplicated; changed reuse is rejected.
-6. An approved rollback executes once with ordered progress events.
-7. An unknown but applied rollback is reconciled without a second execution.
-8. An unknown and absent rollback can retry only after reconciliation evidence.
-9. An unexpected external revision remains unresolved.
-10. An unknown action survives store snapshot and coordinator restart.
-11. An expired approval returns the write to `AWAITING_APPROVAL`.
-12. Pending work can be cancelled, while completed work cannot.
+4. Whitespace, case, and Unicode normalization cannot bypass separation of duties.
+5. Non-finite or fractional approval TTLs are rejected.
+6. Sparse arrays and non-JSON objects are rejected by generic input hashing.
+7. Deployment identities containing delimiters remain distinct.
+8. Approval with a different payload fingerprint is rejected.
+9. An identical action request is deduplicated; changed reuse is rejected.
+10. An approved rollback executes once with ordered progress events.
+11. An unknown but applied rollback is reconciled without a second execution.
+12. Action-correlated history remains authoritative when deployment state changes again before reconciliation.
+13. An unknown and absent rollback can retry only after reconciliation evidence.
+14. An unexpected external revision remains unresolved.
+15. An unknown action survives store snapshot and coordinator restart.
+16. An expired approval returns the write to `AWAITING_APPROVAL`.
+17. Pending work can be cancelled, while completed work cannot.
 
 ## Run it
 
 ```bash
-npm install
+npm ci
 npm run verify
 ```
 
-`verify` runs strict TypeScript checking, twelve automated tests, and a structured incident rollback walkthrough.
+`verify` runs strict TypeScript checking, seventeen automated tests, and a structured incident rollback walkthrough.
 
 ## Repository shape
 
@@ -83,7 +88,7 @@ src/store.ts                   snapshot and progress-history persistence boundar
 src/stableJson.ts              canonical payload fingerprinting
 src/types.ts                   capability, action, approval, and outcome contracts
 src/demo.ts                    restart and unknown-outcome walkthrough
-test/                          twelve safety and recovery acceptance tests
+test/                          seventeen safety and recovery acceptance tests
 docs/                          architecture decision record
 WALKTHROUGH.md                 two-minute interview presentation script
 PUBLICATION.md                 isolated public-release checklist
@@ -104,3 +109,7 @@ The store is a deterministic in-memory boundary with snapshot restoration, not a
 ## Non-goals
 
 No real deployment, account, credential, model, prompt, customer, or employer system is used. The incident and deployment data are synthetic. This is not a claim about any employer's private architecture and is not a production agent framework.
+
+## Provenance
+
+Artifact owner: Lars Schouw. Repository account: [`damian123`](https://github.com/damian123). Commits may use the display name Damian; `EVIDENCE.json` records this mapping explicitly.

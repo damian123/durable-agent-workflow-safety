@@ -1,7 +1,9 @@
 {
   "schema_version": "1.0",
   "owner": "Lars Schouw",
-  "reviewed_on": "2026-08-28",
+  "repository_account": "damian123",
+  "identity_note": "Published under the GitHub account damian123; commits may use the display name Damian.",
+  "reviewed_on": "2026-08-29",
   "license": "MIT",
   "artifact": {
     "id": "E-CODE-003",
@@ -10,13 +12,15 @@
     "publication_status": "public",
     "public_url": "https://github.com/damian123/durable-agent-workflow-safety",
     "verification_command": "npm ci && npm run verify",
-    "expected_test_count": 12,
+    "expected_test_count": 17,
     "claims_supported": [
       "runtime-validated capabilities",
       "approval bound to an immutable input fingerprint",
       "separation of request and approval",
       "unknown execution outcomes",
-      "restart-safe reconciliation"
+      "normalized actor separation",
+      "action-correlated restart-safe reconciliation",
+      "plain-JSON canonical input hashing"
     ],
     "evidence_files": [
       "README.md",

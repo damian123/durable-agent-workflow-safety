@@ -33,7 +33,9 @@ export class DurableActionCoordinator {
     options: CoordinatorOptions = {},
   ) {
     this.approvalTtlMs = options.approvalTtlMs ?? 5 * 60 * 1_000;
-    if (this.approvalTtlMs <= 0) throw new Error("approval TTL must be positive");
+    if (!Number.isSafeInteger(this.approvalTtlMs) || this.approvalTtlMs <= 0) {
+      throw new Error("approval TTL must be a positive finite safe integer");
+    }
   }
 
   register(capability: CapabilityDefinition): void {
@@ -46,7 +48,7 @@ export class DurableActionCoordinator {
   requestAction(input: RequestActionInput): { created: boolean; action: ActionRecord } {
     this.assertIdentifier(input.actionId, "action ID");
     this.assertIdentifier(input.taskId, "task ID");
-    this.assertIdentifier(input.requestedBy, "requester");
+    const requestedBy = this.normalizeActor(input.requestedBy, "requester");
     const capability = this.requireCapability(input.capabilityName);
     const validatedInput = capability.validate(input.input);
     const inputHash = actionInputHash(
@@ -58,7 +60,7 @@ export class DurableActionCoordinator {
     if (existing !== undefined) {
       if (
         existing.taskId !== input.taskId ||
-        existing.requestedBy !== input.requestedBy ||
+        existing.requestedBy !== requestedBy ||
         existing.capabilityName !== capability.name ||
         existing.capabilityVersion !== capability.version ||
         existing.inputHash !== inputHash
@@ -74,7 +76,7 @@ export class DurableActionCoordinator {
     const action: ActionRecord = {
       actionId: input.actionId,
       taskId: input.taskId,
-      requestedBy: input.requestedBy,
+      requestedBy,
       capabilityName: capability.name,
       capabilityVersion: capability.version,
       risk: capability.risk,
@@ -94,12 +96,12 @@ export class DurableActionCoordinator {
   }
 
   approveAction(actionId: string, approvedBy: string, inputHash: string): ActionRecord {
-    this.assertIdentifier(approvedBy, "approver");
+    const normalizedApprover = this.normalizeActor(approvedBy, "approver");
     const action = this.requireAction(actionId);
     if (action.status !== "AWAITING_APPROVAL") {
       throw new Error(`cannot approve an action in ${action.status} state`);
     }
-    if (approvedBy === action.requestedBy) {
+    if (normalizedApprover === action.requestedBy) {
       throw new Error("requester cannot approve their own write action");
     }
     if (inputHash !== action.inputHash) {
@@ -107,16 +109,20 @@ export class DurableActionCoordinator {
     }
 
     const now = this.clock.now();
+    const expiresAtMs = now + this.approvalTtlMs;
+    if (!Number.isSafeInteger(now) || !Number.isSafeInteger(expiresAtMs)) {
+      throw new Error("approval clock and expiry must be finite safe integers");
+    }
     action.approval = {
-      approvedBy,
+      approvedBy: normalizedApprover,
       approvedAtMs: now,
-      expiresAtMs: now + this.approvalTtlMs,
+      expiresAtMs,
       inputHash,
     };
     action.status = "READY";
     action.updatedAtMs = now;
     this.store.saveAction(action);
-    this.event(action, "APPROVED", `approved by ${approvedBy}`);
+    this.event(action, "APPROVED", `approved by ${normalizedApprover}`);
     return this.getAction(actionId);
   }
 
@@ -210,21 +216,21 @@ export class DurableActionCoordinator {
   }
 
   cancel(actionId: string, requestedBy: string): ActionRecord {
-    this.assertIdentifier(requestedBy, "cancelling user");
+    const normalizedRequester = this.normalizeActor(requestedBy, "cancelling user");
     const action = this.requireAction(actionId);
     if (action.status !== "AWAITING_APPROVAL" && action.status !== "READY") {
       throw new Error(`cannot cancel an action in ${action.status} state`);
     }
     if (
-      requestedBy !== action.requestedBy &&
-      requestedBy !== action.approval?.approvedBy
+      normalizedRequester !== action.requestedBy &&
+      normalizedRequester !== action.approval?.approvedBy
     ) {
       throw new Error("cancelling user is not authorized for this action");
     }
     action.status = "CANCELLED";
     action.updatedAtMs = this.clock.now();
     this.store.saveAction(action);
-    this.event(action, "CANCELLED", `cancelled by ${requestedBy}`);
+    this.event(action, "CANCELLED", `cancelled by ${normalizedRequester}`);
     return this.getAction(actionId);
   }
 
@@ -296,5 +302,11 @@ export class DurableActionCoordinator {
 
   private assertIdentifier(value: string, label: string): void {
     if (value.trim() === "") throw new Error(`${label} is required`);
+  }
+
+  private normalizeActor(value: string, label: string): string {
+    const normalized = value.normalize("NFKC").trim().toLowerCase();
+    if (normalized === "") throw new Error(`${label} is required`);
+    return normalized;
   }
 }

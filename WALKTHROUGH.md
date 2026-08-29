@@ -28,7 +28,7 @@ Show: `execute`, `reconcile`, and `src/demo.ts`.
 
 ## 1:35-1:50 — verified recovery
 
-> Reconciliation finds the target revision, so the durable action finishes as `SUCCEEDED`. The walkthrough reports one external execution despite the lost acknowledgement and process restart. A separate test proves that retry becomes possible only when reconciliation shows the first action was absent.
+> Reconciliation finds action-and-attempt-correlated execution evidence, so the durable action finishes as `SUCCEEDED`. The walkthrough reports one external execution despite the lost acknowledgement and process restart. Separate tests prove that an intervening revision cannot rewrite execution history and that retry becomes possible only when the correlated attempt is absent and current state still satisfies the rollback precondition.
 
 Show: the final terminal output and the unknown-outcome tests.
 
@@ -47,7 +47,7 @@ npm audit --audit-level=high
 Expected evidence:
 
 - strict TypeScript compilation succeeds;
-- twelve acceptance tests pass;
+- seventeen acceptance tests pass;
 - the walkthrough ends in `SUCCEEDED`;
 - `externalExecutionCount` is `1`; and
 - the dependency audit reports no vulnerabilities.

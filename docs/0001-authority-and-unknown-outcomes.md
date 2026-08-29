@@ -12,10 +12,10 @@ An internal agent may propose actions that read or change production systems. A 
 
 - Capability risk and approval requirements are deterministic code and cannot be overridden through capability input.
 - Every write is runtime-validated, fingerprinted, and persisted before execution.
-- Approval is given by a different identity, bound to the immutable input fingerprint, and time-limited.
+- Approval is given by a normalized different identity, bound to the immutable plain-JSON input fingerprint, and limited by a finite positive TTL.
 - The stable action ID is passed to the external adapter as an idempotency and correlation key.
 - Once execution begins, an adapter exception is conservatively recorded as an unknown outcome.
-- An unknown outcome blocks another execution until authoritative external reconciliation confirms the effect, proves it absent, or leaves it unresolved.
+- An unknown outcome blocks another execution until action-correlated attempt history plus authoritative current state confirms the effect, proves it absent, or leaves it unresolved.
 - Progress events make approval, execution, uncertainty, and reconciliation visible outside the conversational transcript.
 
 ## Consequences
