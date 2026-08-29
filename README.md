@@ -90,11 +90,11 @@ src/types.ts                   capability, action, approval, and outcome contrac
 src/demo.ts                    restart and unknown-outcome walkthrough
 test/                          seventeen safety and recovery acceptance tests
 docs/                          architecture decision record
-WALKTHROUGH.md                 two-minute interview presentation script
+WALKTHROUGH.md                 two-minute walkthrough presentation script
 PUBLICATION.md                 isolated public-release checklist
 ```
 
-## Interview use
+## Walkthrough use
 
 - Explain why tool selection is separate from authorization.
 - Walk through approval binding and expiry.
