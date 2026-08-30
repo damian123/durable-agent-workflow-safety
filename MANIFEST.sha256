@@ -7,8 +7,8 @@ ac854175eea941a6d260226b72bd16237873b2acf76ce0177e91f879724c972f  ./PUBLICATION.
 5553383b0cb32aff4600dedc4d69a974858266e31312ca3e279db7df6e9c8232  ./README.md
 0cf351e4a7ce1431098268399618147af9539a49acc5a5817a4a54ac0be578af  ./WALKTHROUGH.md
 96320782c1980af4c86384e8e56ba5d111520064a2b656f2bd413bba86975e28  ./docs/0001-authority-and-unknown-outcomes.md
-9a513e6ed42ed657c6e278e9acfad08210f1eed2b353fddb98f936950fb4ba1a  ./package-lock.json
-c8b1d331e119720edbdd48ba5185bf0f116d302fbbefafa386f2a6943c046417  ./package.json
+ea4ef18ad1f1ef12199d88d9671912c60da64f758700bc7fcdddfa9d320a590e  ./package-lock.json
+4f1682596b37070c5368b2a0941b0708be3202494cec91a8cf1f7ce3bb12d2dd  ./package.json
 6ccc710e0a999c04ab4f2cccf4890bb81068affe26171d4eb3ee54954be1c880  ./scripts/build-evidence-manifest.sh
 5b9dc28ae9b970df03b284cf56a8a8c32a23bbb532c81b97d97dd20ee2297d8f  ./src/coordinator.ts
 def74ba27a8dcf404071f87cccf7cc614b7796c70bf950bebd10e222f17ccc7d  ./src/demo.ts
