@@ -1,28 +1,8 @@
-# Durable agent workflow safety core
+# Durable agent workflow safety
 
-**Status:** implemented synthetic TypeScript demonstration.
+An internal agent can inspect a deployment and propose a rollback without the language model being able to skip approval or blindly repeat an uncertain external effect.
 
-A small framework-neutral exercise showing how an internal agent can request and execute a consequential tool without giving the language model authority to bypass policy or blindly repeat an uncertain external effect.
-
-## Scenario
-
-An incident agent inspects a production deployment and proposes a rollback. Reads can run immediately. The rollback requires approval from a different identity, and the approval is bound to the exact validated payload. The control-plane connection may close after accepting the command, so the workflow must persist uncertainty, survive a process restart, and reconcile authoritative deployment state before it can finish or retry.
-
-## Demonstrated outcome
-
-- Register versioned capabilities with runtime-validated inputs and declared risk.
-- Keep approval policy in deterministic code rather than model instructions.
-- Permit read capabilities without approval while gating write capabilities.
-- Bind a finite, time-limited approval to an immutable SHA-256 fingerprint of plain JSON input.
-- Normalize requester and approver identities before preventing self-approval.
-- Persist action state before an external effect begins.
-- Deduplicate identical action requests and reject changed payload reuse.
-- Represent a lost acknowledgement as `OUTCOME_UNKNOWN`, not failure.
-- Block blind retry until action-and-attempt-correlated history confirms the effect or, together with authoritative current state, proves it absent.
-- Restore an uncertain workflow from a durable snapshot without repeating the effect.
-- Preserve an ordered, user-visible progress history.
-
-## Architecture
+Portfolio project using fictional data. It is not connected to an employer, client, or production system.
 
 ```mermaid
 flowchart LR
@@ -42,74 +22,40 @@ flowchart LR
     K -->|ambiguous| J
 ```
 
-The authority and uncertainty decision is documented in [ADR 0001](docs/0001-authority-and-unknown-outcomes.md).
+Authority and uncertainty are recorded in [ADR 0001](docs/0001-authority-and-unknown-outcomes.md). No model or agent framework is required; the safety properties live below the planning layer.
 
-For presentation, use the [two-minute walkthrough](WALKTHROUGH.md). Before any external release, use the [standalone publication checklist](PUBLICATION.md).
+## Capabilities
 
-## Implemented stack
+- Register versioned capabilities with runtime-validated inputs and declared risk. Extra fields such as `skipApproval` fail the schema.
+- Keep approval policy in deterministic code. Reads run immediately; writes need a different identity.
+- Bind a finite, time-limited approval to an immutable SHA-256 fingerprint of the plain JSON input.
+- Persist action state before the external call. A lost acknowledgement is `OUTCOME_UNKNOWN`, not failure.
+- Reconcile against action-and-attempt history plus authoritative current state before finishing or retrying, including after a process restart.
 
-TypeScript, Node.js, Zod, Vitest, strict compiler options, deterministic clocks, an in-memory durable-store boundary, a scripted deployment control plane, and a structured executable walkthrough. No language model or framework is required because the safety properties live below the planning layer.
-
-## Acceptance scenarios
-
-1. Strict schemas reject an input that attempts to add `skipApproval`.
-2. Read-only inspection executes without approval.
-3. A write is blocked before approval, and the requester cannot self-approve.
-4. Whitespace, case, and Unicode normalization cannot bypass separation of duties.
-5. Non-finite or fractional approval TTLs are rejected.
-6. Sparse arrays and non-JSON objects are rejected by generic input hashing.
-7. Deployment identities containing delimiters remain distinct.
-8. Approval with a different payload fingerprint is rejected.
-9. An identical action request is deduplicated; changed reuse is rejected.
-10. An approved rollback executes once with ordered progress events.
-11. An unknown but applied rollback is reconciled without a second execution.
-12. Action-correlated history remains authoritative when deployment state changes again before reconciliation.
-13. An unknown and absent rollback can retry only after reconciliation evidence.
-14. An unexpected external revision remains unresolved.
-15. An unknown action survives store snapshot and coordinator restart.
-16. An expired approval returns the write to `AWAITING_APPROVAL`.
-17. Pending work can be cancelled, while completed work cannot.
-
-## Run it
+## Run
 
 ```bash
 npm ci
 npm run verify
 ```
 
-`verify` runs strict TypeScript checking, seventeen automated tests, and a structured incident rollback walkthrough.
+`verify` runs strict TypeScript, seventeen tests, and a structured incident-rollback walkthrough (`src/demo.ts`). Node.js 22 is the CI runtime.
 
-## Repository shape
+## Verification
 
-```text
-src/coordinator.ts             durable state machine, approvals, execution, reconciliation
-src/deploymentCapabilities.ts  strict schemas and scripted external-system behavior
-src/store.ts                   snapshot and progress-history persistence boundary
-src/stableJson.ts              canonical payload fingerprinting
-src/types.ts                   capability, action, approval, and outcome contracts
-src/demo.ts                    restart and unknown-outcome walkthrough
-test/                          seventeen safety and recovery acceptance tests
-docs/                          architecture decision record
-WALKTHROUGH.md                 two-minute walkthrough presentation script
-PUBLICATION.md                 isolated public-release checklist
-```
+GitHub Actions on push and pull request runs `npm ci`, `npm run verify`, and checks `MANIFEST.sha256` against `scripts/build-evidence-manifest.sh`.
 
-## Walkthrough use
+The interesting cases: identity normalization cannot bypass separation of duties; an unknown but applied rollback is not executed twice; an unknown and absent rollback retries only after reconciliation evidence; an unexpected external revision stays unresolved.
 
-- Explain why tool selection is separate from authorization.
-- Walk through approval binding and expiry.
-- Show why a timeout after a write becomes `OUTCOME_UNKNOWN`.
-- Demonstrate restart-safe reconciliation without a duplicate effect.
-- Discuss replacing the in-memory store with a transactional database, outbox, leased workers, delegated identity, policy service, OpenTelemetry, and real target-system adapters.
+## Design
 
-## Production limitations
+- Requester and approver identities are normalized (whitespace, case, Unicode) before the self-approval check.
+- Identical action requests are deduplicated. Reusing an action ID with a changed payload is rejected. Sparse arrays and non-JSON objects never enter the fingerprint.
+- The stable action ID is the idempotency key passed to the scripted control plane.
+- Pending work can be cancelled; completed work cannot. An expired approval returns the write to `AWAITING_APPROVAL`.
 
-The store is a deterministic in-memory boundary with snapshot restoration, not a database. A production implementation needs transactional persistence and outbox delivery, concurrency fencing, worker leases, authenticated delegated identity, policy integration, encryption and redaction, secret isolation, real approval channels, version migration, OpenTelemetry, backpressure, rate limiting, and target-specific idempotency and reconciliation guarantees.
+`src/coordinator.ts` is the state machine. `src/stableJson.ts` fingerprints payloads. `src/store.ts` is the snapshot/progress boundary. `src/deploymentCapabilities.ts` holds the schemas and the scripted control plane.
 
-## Non-goals
+## Limitations
 
-No real deployment, account, credential, model, prompt, customer, or employer system is used. The incident and deployment data are synthetic. This is not a claim about any employer's private architecture and is not a production agent framework.
-
-## Provenance
-
-Artifact owner: Lars Schouw. Repository account: [`damian123`](https://github.com/damian123). Commits may use the display name Damian; `EVIDENCE.json` records this mapping explicitly.
+In-memory snapshot store, scripted deployment adapter, no real identity provider. See [LIMITATIONS.md](LIMITATIONS.md).
